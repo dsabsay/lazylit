@@ -189,6 +189,34 @@ body .vi { color: #19469D }                     /* Name.Variable.Instance */
 body .il { color: #666666 }                     /* Literal.Number.Integer.Long */
 `
 
+var INDEX_HTML = `
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>{{ .ArtifactName }}</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <link rel="stylesheet" media="all" href="../gocco.css" />
+</head>
+
+<body>
+  <div id="container">
+    <div id="background"></div>
+    <h1> {{ .ArtifactName }} </h1>
+    <ul>
+        {{ range .Snapshots }}
+        <li>
+            <a href="./{{ .Dest }}">
+            {{ .CommitDate }} ({{ .SourceFileName }})
+            </a>
+        </li>
+        {{ end }}
+    </ul>
+  </div>
+</body>
+</html>
+`
+
 var HTML = `
 <!DOCTYPE html>
 

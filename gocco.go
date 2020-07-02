@@ -27,6 +27,7 @@ import (
 	"bytes"
 	"container/list"
 	"flag"
+    "fmt"
 	"github.com/russross/blackfriday"
 	"io"
 	"io/ioutil"
@@ -77,6 +78,8 @@ type Language struct {
 	dividerText string
 	// The HTML equivalent
 	dividerHTML *regexp.Regexp
+    // Extracts header values from comment lines
+    headerParser *regexp.Regexp
 }
 
 // a `TemplateData` is per-file
@@ -271,7 +274,8 @@ func setupLanguages() {
 	// you should add more languages here
 	// only the first two fields should change, the rest should
 	// be `nil, "", nil`
-	languages[".go"] = &Language{"go", "//", nil, "", nil}
+	languages[".go"] = &Language{"go", "//", nil, "", nil, nil}
+	languages[".py"] = &Language{"python", "#", nil, "", nil, nil}
 }
 
 func setup() {
@@ -279,10 +283,73 @@ func setup() {
 
 	// create the regular expressions based on the language comment symbol
 	for _, lang := range languages {
+        lang.headerParser, _ = regexp.Compile("^\\s*" + lang.symbol + "\\s*(\\w+):\\s*(.*)$")
 		lang.commentMatcher, _ = regexp.Compile("^\\s*" + lang.symbol + "\\s?")
 		lang.dividerText = "\n" + lang.symbol + "DIVIDER\n"
 		lang.dividerHTML, _ = regexp.Compile("\\n*<span class=\"c1?\">" + lang.symbol + "DIVIDER<\\/span>\\n*")
 	}
+}
+
+type ArtifactSnapshot struct {
+    Commit string
+    // TODO: change to time.Time
+    CommitDate string
+    SourceFileName string
+    DocFileName string  // name of file under artifacts/
+    Dest string  // name of HTML file
+}
+
+type IndexTemplateData struct {
+    ArtifactName string
+    Snapshots []ArtifactSnapshot
+}
+
+func generateIndexes(artifacts map[string][]ArtifactSnapshot) {
+    t, err := template.New("artifact_index").Parse(INDEX_HTML)
+    if err != nil {
+        log.Fatal(err.Error())
+    }
+    for name, snapshots := range artifacts {
+        ensureDirectory("docs/" + name)
+        dest := filepath.Join("docs/" + name + "/index.html")
+        f, err := os.Create(dest)
+        if err != nil {
+            log.Fatal(err.Error())
+        }
+        err = t.Execute(f, IndexTemplateData{name, snapshots})
+        if err != nil {
+            log.Fatal(err.Error())
+        }
+    }
+}
+
+func parseHeaders(file string) ArtifactSnapshot {
+    data, err := ioutil.ReadFile(file)
+    if err != nil {
+        log.Fatal(err.Error())
+    }
+    lines := bytes.Split(data, []byte("\n"))
+    language := getLanguage(file)
+
+    baseName := filepath.Base(file)
+    dest := strings.Split(baseName, ".")[0] + ".html"
+    a := ArtifactSnapshot{DocFileName: file, Dest: dest}
+    for _, line := range lines {
+        matches := language.headerParser.FindStringSubmatch(string(line))
+        if matches == nil {
+            break
+        }
+        switch matches[1] {
+        case "Commit":
+            a.Commit = matches[2]
+        case "CommitDate":
+            a.CommitDate = matches[2]
+        case "SourceFile":
+            a.SourceFileName = matches[2]
+        }
+    }
+
+    return a
 }
 
 // let's Go!
@@ -290,6 +357,30 @@ func main() {
 	setup()
 
 	flag.Parse()
+    adirs, err := ioutil.ReadDir("artifacts")
+    if err != nil {
+        if os.IsNotExist(err) {
+            log.Fatalf("No artifacts/ directory found.")
+        }
+        log.Fatal(err.Error())
+    }
+
+    artifacts := make(map[string][]ArtifactSnapshot)
+    for _, a := range adirs {
+        path := filepath.Join("artifacts", a.Name())
+        files, err := ioutil.ReadDir(path)
+        if err != nil {
+            log.Fatal(err.Error())
+        }
+        for _, file := range files {
+            fpath := filepath.Join(path, file.Name())
+            artifacts[a.Name()] = append(artifacts[a.Name()], parseHeaders(fpath))
+        }
+    }
+
+    fmt.Println(artifacts)
+    generateIndexes(artifacts)
+
 	sources = flag.Args()
 	sort.Strings(sources)
 
