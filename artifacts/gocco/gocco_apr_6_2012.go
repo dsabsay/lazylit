@@ -1,5 +1,8 @@
 // Commit: 84d2aea390709a9d090e9b65d061fb13dfa1e3f3
-// CommitDate: Fri Apr 6 2012
+// CommitDate: Apr 6 2012
+// SourceFile: gocco.go
+// SourceLink: https://github.com/nikhilm/gocco/blob/84d2aea390709a9d090e9b65d061fb13dfa1e3f3/gocco.go
+// DocAuthor: Daniel Sabsay
 
 // **Gocco** is a Go port of [Docco](http://jashkenas.github.com/docco/): the
 // original quick-and-dirty, hundred-line-long, literate-programming-style

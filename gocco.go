@@ -37,9 +37,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"sync"
 	"text/template"
+    "time"
 )
 
 // ## Types
@@ -88,23 +88,20 @@ type TemplateData struct {
 	Title string
 	// The Sections making up this file
 	Sections []*TemplateSection
-	// A full list of source files so that a table-of-contents can
-	// be generated
-	Sources []string
+    // List of other revisions for same artifact.
+    OtherRevisions []ArtifactSnapshot
 	// Only generate the TOC is there is more than one file
 	// Go's templating system does not allow expressions in the
 	// template, so calculate it outside
 	Multiple bool
+    Snapshot *ArtifactSnapshot
 }
 
 // a map of all the languages we know
 var languages map[string]*Language
 
-// paths of all the source files, sorted
+// TODO: remove
 var sources []string
-
-// absolute path to get resources
-var packageLocation string
 
 // Wrap the code in these
 const highlightStart = "<div class=\"highlight\"><pre>"
@@ -117,19 +114,19 @@ const highlightEnd = "</pre></div>"
 // and putting it together.
 // The WaitGroup is used to signal we are done, so that the main
 // goroutine waits for all the sub goroutines
-func generateDocumentation(source string, wg *sync.WaitGroup) {
-	code, err := ioutil.ReadFile(source)
+func generateDocumentation(a ArtifactSnapshot, otherRevs []ArtifactSnapshot, wg *sync.WaitGroup) {
+	code, err := ioutil.ReadFile(a.DocFileName)
 	if err != nil {
 		log.Panic(err)
 	}
-	sections := parse(source, code)
-	highlight(source, sections)
-	generateHTML(source, sections)
+	sections := parse(a.DocFileName, code, a.FirstNonHeaderLine)
+	highlight(a.DocFileName, sections)
+	generateHTML(a, otherRevs, sections)
 	wg.Done()
 }
 
 // Parse splits code into `Section`s
-func parse(source string, code []byte) *list.List {
+func parse(source string, code []byte, startLine int) *list.List {
 	lines := bytes.Split(code, []byte("\n"))
 	sections := new(list.List)
 	sections.Init()
@@ -149,7 +146,8 @@ func parse(source string, code []byte) *list.List {
 		sections.PushBack(&Section{docsCopy, codeCopy, nil, nil})
 	}
 
-	for _, line := range lines {
+    for i := startLine; i < len(lines); i++ {
+        line := lines[i]
 		// if the line is a comment
 		if language.commentMatcher.Match(line) {
 			// but there was previous code
@@ -215,16 +213,8 @@ func highlight(source string, sections *list.List) {
 	}
 }
 
-// compute the output location (in `docs/`) for the file
-func destination(source string) string {
-	base := filepath.Base(source)
-	return "docs/" + base[0:strings.LastIndex(base, filepath.Ext(base))] + ".html"
-}
-
 // render the final HTML
-func generateHTML(source string, sections *list.List) {
-	title := filepath.Base(source)
-	dest := destination(source)
+func generateHTML(a ArtifactSnapshot, otherRevs []ArtifactSnapshot, sections *list.List) {
 	// convert every `Section` into corresponding `TemplateSection`
 	sectionsArray := make([]*TemplateSection, sections.Len())
 	for e, i := sections.Front(), 0; e != nil; e, i = e.Next(), i+1 {
@@ -234,9 +224,17 @@ func generateHTML(source string, sections *list.List) {
 		sectionsArray[i] = &TemplateSection{docsBuf.String(), codeBuf.String(), i + 1}
 	}
 	// run through the Go template
-	html := goccoTemplate(TemplateData{title, sectionsArray, sources, len(sources) > 1})
-	log.Println("gocco: ", source, " -> ", dest)
-	ioutil.WriteFile(dest, html, 0644)
+    html := goccoTemplate(TemplateData{
+        filepath.Base(a.SourceFileName),
+        sectionsArray,
+        otherRevs,
+        len(otherRevs) > 1,
+        &a,
+    })
+    // Replace *sources* with the revisions for this file
+	// html := goccoTemplate(TemplateData{title, sectionsArray, sources, len(sources) > 1})
+	log.Println("gocco: ", a.DocFileName, " -> ", a.Destination())
+	ioutil.WriteFile(a.Destination(), html, 0644)
 }
 
 func goccoTemplate(data TemplateData) []byte {
@@ -246,7 +244,7 @@ func goccoTemplate(data TemplateData) []byte {
 		// introduce the two functions that the template needs
 		template.FuncMap{
 			"base":        filepath.Base,
-			"destination": destination,
+			"destination": ArtifactSnapshot.Destination,
 		}).Parse(HTML)
 	if err != nil {
 		panic(err)
@@ -291,12 +289,37 @@ func setup() {
 }
 
 type ArtifactSnapshot struct {
+    ArtifactName string
     Commit string
-    // TODO: change to time.Time
-    CommitDate string
+    CommitDate time.Time
+    CommitDateString string
     SourceFileName string
+    SourceLink string
     DocFileName string  // name of file under artifacts/
+    DocAuthor string  // author of documentation
     Dest string  // name of HTML file
+    FirstNonHeaderLine int  // line number of first non-header line
+}
+
+type byCommitDate []ArtifactSnapshot
+
+func (s byCommitDate) Len() int {
+    return len(s)
+}
+
+func (s byCommitDate) Swap(i, j int) {
+    s[i], s[j] = s[j], s[i]
+}
+
+func (s byCommitDate) Less (i, j int) bool {
+    return s[i].CommitDate.Before(s[j].CommitDate)
+}
+
+func (a ArtifactSnapshot) Destination() string {
+    baseName := filepath.Base(a.DocFileName)
+    ext := filepath.Ext(baseName)
+    destBase := baseName[:len(baseName)-len(ext)]
+    return filepath.Join("docs", a.ArtifactName, destBase + ".html")
 }
 
 type IndexTemplateData struct {
@@ -305,7 +328,10 @@ type IndexTemplateData struct {
 }
 
 func generateIndexes(artifacts map[string][]ArtifactSnapshot) {
-    t, err := template.New("artifact_index").Parse(INDEX_HTML)
+    t, err := template.New("artifact_index").Funcs(template.FuncMap{
+        "base": filepath.Base,
+    }).Parse(INDEX_HTML)
+
     if err != nil {
         log.Fatal(err.Error())
     }
@@ -323,33 +349,87 @@ func generateIndexes(artifacts map[string][]ArtifactSnapshot) {
     }
 }
 
-func parseHeaders(file string) ArtifactSnapshot {
-    data, err := ioutil.ReadFile(file)
+func generateAbout(artifacts map[string][]ArtifactSnapshot) {
+    t, err := template.New("about_page").Parse(ABOUT_HTML)
+
     if err != nil {
         log.Fatal(err.Error())
+    }
+    artifactNames := make([]string, 0, len(artifacts))
+    for name, _ := range artifacts {
+        artifactNames = append(artifactNames, name)
+    }
+
+    dest := filepath.Join("docs", "index.html")
+    f, err := os.Create(dest)
+    if err != nil {
+        log.Fatal(err.Error())
+    }
+    err = t.Execute(f, artifactNames)
+    if err != nil {
+        log.Fatal(err.Error())
+    }
+}
+
+func parseHeaders(name, file string) (*ArtifactSnapshot, error) {
+    data, err := ioutil.ReadFile(file)
+    if err != nil {
+        return nil, err
     }
     lines := bytes.Split(data, []byte("\n"))
     language := getLanguage(file)
 
-    baseName := filepath.Base(file)
-    dest := strings.Split(baseName, ".")[0] + ".html"
-    a := ArtifactSnapshot{DocFileName: file, Dest: dest}
-    for _, line := range lines {
+    a := ArtifactSnapshot{ArtifactName: name, DocFileName: file}
+    isMissing := map[string]bool{
+        "Commit": true,
+        "CommitDate": true,
+        "SourceFile": true,
+        "SourceLink": true,
+        "DocAuthor": true,
+    }
+    for i, line := range lines {
         matches := language.headerParser.FindStringSubmatch(string(line))
         if matches == nil {
+            a.FirstNonHeaderLine = i
             break
         }
         switch matches[1] {
         case "Commit":
             a.Commit = matches[2]
+            isMissing["Commit"] = false
         case "CommitDate":
-            a.CommitDate = matches[2]
+            date, err := time.Parse("Jan 2 2006", matches[2])
+            if err != nil {
+                log.Printf("Error parsing line: %v", string(line))
+                return nil, fmt.Errorf("Unable to parse headers for %v: %v", file, err)
+            }
+            a.CommitDate = date
+            a.CommitDateString = matches[2]
+            isMissing["CommitDate"] = false
         case "SourceFile":
             a.SourceFileName = matches[2]
+            isMissing["SourceFile"] = false
+        case "SourceLink":
+            a.SourceLink = matches[2]
+            isMissing["SourceLink"] = false
+        case "DocAuthor":
+            a.DocAuthor = matches[2]
+            isMissing["DocAuthor"] = false
         }
     }
 
-    return a
+    // check for missing headers
+    missingHeaders := make([]string, 0, 5)
+    for h, missing := range isMissing {
+        if missing {
+            missingHeaders = append(missingHeaders, h)
+        }
+    }
+    if len(missingHeaders) > 0 {
+        return nil, fmt.Errorf("%v is missing headers: %v\n", file, missingHeaders)
+    }
+
+    return &a, nil
 }
 
 // let's Go!
@@ -365,36 +445,46 @@ func main() {
         log.Fatal(err.Error())
     }
 
+    pageCount := 0
     artifacts := make(map[string][]ArtifactSnapshot)
-    for _, a := range adirs {
-        path := filepath.Join("artifacts", a.Name())
+    for _, dir := range adirs {
+        path := filepath.Join("artifacts", dir.Name())
         files, err := ioutil.ReadDir(path)
         if err != nil {
             log.Fatal(err.Error())
         }
         for _, file := range files {
             fpath := filepath.Join(path, file.Name())
-            artifacts[a.Name()] = append(artifacts[a.Name()], parseHeaders(fpath))
+            snap, err := parseHeaders(dir.Name(), fpath)
+            if err != nil {
+                log.Fatal(err.Error())
+            }
+            artifacts[dir.Name()] = append(artifacts[dir.Name()], *snap)
+            pageCount += 1
         }
+        sort.Sort(sort.Reverse(byCommitDate(artifacts[dir.Name()])))
     }
 
-    fmt.Println(artifacts)
-    generateIndexes(artifacts)
-
-	sources = flag.Args()
-	sort.Strings(sources)
-
-	if flag.NArg() <= 0 {
-		return
-	}
-
 	ensureDirectory("docs")
+    f, err := os.Create("docs/.nojekyll")
+    f.Close()
+    if err != nil && os.IsNotExist(err) {
+        log.Fatalf("Unable to create .nojekyll: %v", err)
+    }
+    generateAbout(artifacts)
+    generateIndexes(artifacts)
 	ioutil.WriteFile("docs/gocco.css", bytes.NewBufferString(Css).Bytes(), 0755)
 
 	wg := new(sync.WaitGroup)
-	wg.Add(flag.NArg())
-	for _, arg := range flag.Args() {
-		go generateDocumentation(arg, wg)
+	wg.Add(pageCount)
+    for _, a := range artifacts {
+        for i, snapshot := range a {
+            otherRevs := make([]ArtifactSnapshot, len(a))
+            copy(otherRevs, a)
+            copy(otherRevs[i:], otherRevs[i+1:])
+            otherRevs = otherRevs[:len(otherRevs)-1]
+            go generateDocumentation(snapshot, otherRevs, wg)
+        }
 	}
 	wg.Wait()
 }

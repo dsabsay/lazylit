@@ -1,0 +1,344 @@
+
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>tiddlylisp.may_24_2020.py</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <link rel="stylesheet" media="all" href="gocco.css" />
+</head>
+<body>
+  <div id="container">
+    <div id="background"></div>
+    
+    <table cellpadding="0" cellspacing="0">
+      <thead>
+        <tr>
+          <th class="docs">
+            <h1>
+                tiddlylisp.may_24_2020.py
+            </h1>
+            <p> 
+                Viewing notes for tiddlylisp.py at revision <a href="https://github.com/dsabsay/tiddlylisp/blob/726db34c8e3dbc7dedb1aa793cffe7878035d6e2/tiddlylisp.py">726db34c8e3dbc7dedb1aa793cffe7878035d6e2</a>.
+            </p>
+          </th>
+          <th class="code">
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+          
+          <tr id="section-1">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-1">&#182;</a>
+              </div>
+                <p>Commit: 726db34c8e3dbc7dedb1aa793cffe7878035d6e2
+CommitDate: May 24 2020
+SourceFile: tiddlylisp.py
+SourceLink: <a href="https://github.com/dsabsay/tiddlylisp/blob/726db34c8e3dbc7dedb1aa793cffe7878035d6e2/tiddlylisp.py">https://github.com/dsabsay/tiddlylisp/blob/726db34c8e3dbc7dedb1aa793cffe7878035d6e2/tiddlylisp.py</a></p>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre><span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Most (or all) of this code is from Michael Nielsen&#39;s essay found here:</span>
+<span class="sd">http://www.michaelnielsen.org/ddi/lisp-as-the-maxwells-equations-of-software/</span>
+<span class="sd">which, in turn, was inspired by Peter Norvig&#39;s Python Lisp interpreter.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">readline</span></pre></div>
+            </td>
+          </tr>
+          
+          <tr id="section-2">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-2">&#182;</a>
+              </div>
+                <h3>Data structures and types</h3>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre><span class="n">Symbol</span> <span class="o">=</span> <span class="nb">str</span>
+
+<span class="k">class</span> <span class="nc">Env</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    An environment: Dictionary of {&#39;var&#39;: val} pairs, with an outer</span>
+<span class="sd">    Environment.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="p">(),</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">outer</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">args</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outer</span> <span class="o">=</span> <span class="n">outer</span>
+
+    <span class="k">def</span> <span class="nf">find</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot; Return innermost Env where var appears. &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span> <span class="k">if</span> <span class="n">var</span> <span class="ow">in</span> <span class="bp">self</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">outer</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">var</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Symbol &quot;{var}&quot; is unbound!&#39;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">add_globals</span><span class="p">(</span><span class="n">env</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Adds built-in procedures and variables to env. &quot;&quot;&quot;</span>
+    <span class="kn">import</span> <span class="nn">operator</span>
+
+    <span class="k">def</span> <span class="nf">tl_assert</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">x</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s1">&#39;Assertion failed!&#39;</span><span class="p">)</span>
+
+    <span class="n">env</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+        <span class="s1">&#39;+&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">add</span><span class="p">,</span>
+        <span class="s1">&#39;-&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">sub</span><span class="p">,</span>
+        <span class="s1">&#39;*&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">mul</span><span class="p">,</span>
+        <span class="s1">&#39;/&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">truediv</span><span class="p">,</span>
+        <span class="s1">&#39;&gt;&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">gt</span><span class="p">,</span>
+        <span class="s1">&#39;&lt;&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">lt</span><span class="p">,</span>
+        <span class="s1">&#39;&gt;=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">ge</span><span class="p">,</span>
+        <span class="s1">&#39;&lt;=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">le</span><span class="p">,</span>
+        <span class="s1">&#39;=&#39;</span><span class="p">:</span> <span class="n">operator</span><span class="o">.</span><span class="n">eq</span><span class="p">,</span>
+        <span class="s1">&#39;assert&#39;</span><span class="p">:</span> <span class="n">tl_assert</span><span class="p">,</span>
+    <span class="p">})</span>
+    <span class="n">env</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;True&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span> <span class="s1">&#39;False&#39;</span><span class="p">:</span> <span class="bp">False</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">env</span>
+
+
+<span class="n">global_env</span> <span class="o">=</span> <span class="n">add_globals</span><span class="p">(</span><span class="n">Env</span><span class="p">())</span>
+
+
+<span class="k">def</span> <span class="nf">tl_eval</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">env</span><span class="o">=</span><span class="n">global_env</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Evaluate an expression *x* in an environment *env*. &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Symbol</span><span class="p">):</span>  <span class="c1"># variable reference</span>
+        <span class="k">return</span> <span class="n">env</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">x</span><span class="p">)[</span><span class="n">x</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>  <span class="c1"># constant literal</span>
+        <span class="k">return</span> <span class="n">x</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;quote&#39;</span> <span class="ow">or</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;q&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="n">exp</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;atom?&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">),</span> <span class="nb">list</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;eq?&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp1</span><span class="p">,</span> <span class="n">exp2</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span> <span class="o">=</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp1</span><span class="p">,</span> <span class="n">env</span><span class="p">),</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp2</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v1</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">v1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">v1</span> <span class="o">==</span> <span class="n">v2</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">v1</span> <span class="o">==</span> <span class="n">v2</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;car&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span></pre></div>
+            </td>
+          </tr>
+          
+          <tr id="section-3">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-3">&#182;</a>
+              </div>
+                <p>NOTE: This will evaluate all items of the list.</p>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre>        <span class="k">return</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;cdr&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;cons&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp1</span><span class="p">,</span> <span class="n">exp2</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">tl_eval</span><span class="p">(</span><span class="n">exp1</span><span class="p">,</span> <span class="n">env</span><span class="p">),</span> <span class="o">*</span><span class="n">tl_eval</span><span class="p">(</span><span class="n">exp2</span><span class="p">,</span> <span class="n">env</span><span class="p">)]</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;cond&#39;</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">p</span><span class="p">,</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="k">if</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">env</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;null?&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span> <span class="o">==</span> <span class="p">[]</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;if&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">conseq</span><span class="p">,</span> <span class="n">alt</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">if</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">test</span><span class="p">,</span> <span class="n">env</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">conseq</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">alt</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;define&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">var</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="n">env</span><span class="p">[</span><span class="n">var</span><span class="p">]</span> <span class="o">=</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;set!&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">var</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="n">env</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">var</span><span class="p">)[</span><span class="n">var</span><span class="p">]</span> <span class="o">=</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;lambda&#39;</span><span class="p">:</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">exp</span> <span class="o">=</span> <span class="n">x</span>
+        <span class="k">return</span> <span class="k">lambda</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">Env</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">env</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;begin&#39;</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">exp</span> <span class="ow">in</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">val</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># procedure application</span>
+        <span class="n">exps</span> <span class="o">=</span> <span class="p">[</span><span class="n">tl_eval</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">env</span><span class="p">)</span> <span class="k">for</span> <span class="n">exp</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+        <span class="n">proc</span> <span class="o">=</span> <span class="n">exps</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">proc</span><span class="p">(</span><span class="o">*</span><span class="n">exps</span><span class="p">)</span></pre></div>
+            </td>
+          </tr>
+          
+          <tr id="section-4">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-4">&#182;</a>
+              </div>
+                <h3>Parsing</h3>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre><span class="k">def</span> <span class="nf">tl_parse</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Parse a TL epxression from a string. &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">read_from</span><span class="p">(</span><span class="n">tokenize</span><span class="p">(</span><span class="n">s</span><span class="p">))</span>
+
+
+<span class="k">def</span> <span class="nf">tokenize</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Converts a string to list of tokens. &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">s</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">,</span> <span class="s1">&#39; ( &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;)&#39;</span><span class="p">,</span> <span class="s1">&#39; ) &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">read_from</span><span class="p">(</span><span class="n">tokens</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Read an expression from a sequence of tokens. &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span><span class="s1">&#39;Unexpected EOF while reading.&#39;</span><span class="p">)</span>
+    <span class="n">token</span> <span class="o">=</span> <span class="n">tokens</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">token</span> <span class="o">==</span> <span class="s1">&#39;(&#39;</span><span class="p">:</span>
+        <span class="n">L</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">while</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;)&#39;</span><span class="p">:</span>
+            <span class="n">L</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read_from</span><span class="p">(</span><span class="n">tokens</span><span class="p">))</span>
+        <span class="n">tokens</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># pop off &#39;)&#39;</span>
+        <span class="k">return</span> <span class="n">L</span>
+    <span class="k">elif</span> <span class="n">token</span> <span class="o">==</span> <span class="s1">&#39;)&#39;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span><span class="s1">&#39;Unexpected )&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">atom</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">atom</span><span class="p">(</span><span class="n">token</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Convert a token to an atom. &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Symbol</span><span class="p">(</span><span class="n">token</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">tl_to_string</span><span class="p">(</span><span class="n">exp</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Converts Python objects to a TL-readable string. &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">exp</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s1">&#39;(&#39;</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">tl_to_string</span><span class="p">,</span> <span class="n">exp</span><span class="p">))</span> <span class="o">+</span> <span class="s1">&#39;)&#39;</span></pre></div>
+            </td>
+          </tr>
+          
+          <tr id="section-5">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-5">&#182;</a>
+              </div>
+                <h3>Loading and running from file</h3>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre><span class="k">def</span> <span class="nf">running_paren_sums</span><span class="p">(</span><span class="n">program</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Map the lines in the list *program* to a list whose entries contain</span>
+<span class="sd">    a running sum of the per-line difference between the number of &#39;(&#39;</span>
+<span class="sd">    and the number of &#39;)&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">count_open_parens</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">line</span><span class="p">:</span> <span class="n">line</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)</span> <span class="o">-</span> <span class="n">line</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s1">&#39;)&#39;</span><span class="p">)</span>
+    <span class="n">paren_counts</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="n">count_open_parens</span><span class="p">,</span> <span class="n">program</span><span class="p">)</span>
+    <span class="n">rps</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">paren_count</span> <span class="ow">in</span> <span class="n">paren_counts</span><span class="p">:</span>
+        <span class="n">total</span> <span class="o">+=</span> <span class="n">paren_count</span>
+        <span class="n">rps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">total</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">rps</span>
+
+
+<span class="k">def</span> <span class="nf">load</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load the tiddlylisp program in *filename*, execute it and start the REPl.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Loading and executing {filename}&#39;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">program</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span></pre></div>
+            </td>
+          </tr>
+          
+          <tr id="section-6">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-6">&#182;</a>
+              </div>
+                <p>Remove full-line comments</p>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre>    <span class="n">program</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">program</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">x</span><span class="o">.</span><span class="n">lstrip</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;;&#39;</span><span class="p">)]</span>
+    <span class="n">rps</span> <span class="o">=</span> <span class="n">running_paren_sums</span><span class="p">(</span><span class="n">program</span><span class="p">)</span>
+    <span class="n">full_line</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">for</span> <span class="n">paren_sum</span><span class="p">,</span> <span class="n">program_line</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">rps</span><span class="p">,</span> <span class="n">program</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">paren_sum</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">SyntaxError</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;Too many &quot;)&quot; on line: {program_line}&#39;</span><span class="p">)</span>
+        <span class="n">program_line</span> <span class="o">=</span> <span class="n">program_line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">full_line</span> <span class="o">+=</span> <span class="n">program_line</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span>
+        <span class="k">if</span> <span class="n">paren_sum</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">full_line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">tl_parse</span><span class="p">(</span><span class="n">full_line</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">print</span><span class="p">(</span><span class="n">tl_to_string</span><span class="p">(</span><span class="n">val</span><span class="p">))</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="n">handle_error</span><span class="p">()</span>
+                <span class="k">print</span><span class="p">(</span><span class="n">f</span><span class="s1">&#39;The line in which the error occurred:</span><span class="se">\n</span><span class="s1">{program_line}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="k">break</span>
+            <span class="n">full_line</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">repl</span><span class="p">()</span></pre></div>
+            </td>
+          </tr>
+          
+          <tr id="section-7">
+            <td class="docs">
+              <div class="pilwrap">
+                  <a class="pilcrow" href="#section-7">&#182;</a>
+              </div>
+                <h3>REPL</h3>
+
+            </td>
+            <td class="code">
+                <div class="highlight"><pre><span class="k">def</span> <span class="nf">repl</span><span class="p">(</span><span class="n">prompt</span><span class="o">=</span><span class="s1">&#39;tiddlylisp&gt; &#39;</span><span class="p">):</span>
+    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">tl_eval</span><span class="p">(</span><span class="n">tl_parse</span><span class="p">(</span><span class="nb">input</span><span class="p">(</span><span class="n">prompt</span><span class="p">)))</span>
+            <span class="k">if</span> <span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="n">tl_to_string</span><span class="p">(</span><span class="n">val</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+            <span class="k">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Exiting.</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">()</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">handle_error</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">handle_error</span><span class="p">():</span>
+    <span class="k">print</span><span class="p">(</span><span class="s1">&#39;An error occurred. Python stacktrace:&#39;</span><span class="p">)</span>
+    <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">load</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">repl</span><span class="p">()</span>
+
+</pre></div>
+            </td>
+          </tr>
+          
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

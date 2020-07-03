@@ -9,6 +9,14 @@ body {
   color: #252519;
   margin: 0; padding: 0;
 }
+hr {
+    border: 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.2);
+    margin-bottom: 1rem;
+}
+footer {
+    color: rgba(0, 0, 0, 0.5);
+}
 a {
   color: #261a3b;
 }
@@ -17,6 +25,9 @@ a {
   }
 p {
   margin: 0 0 15px 0;
+}
+p.footnote {
+    font-size: 0.6rem;
 }
 h1, h2, h3, h4, h5, h6 {
   margin: 0px 0 15px 0;
@@ -33,6 +44,10 @@ h1, h2, h3, h4, h5, h6 {
   background: #f5f5ff;
   border-left: 1px solid #e5e5ee;
   z-index: -1;
+}
+#content {
+    padding: 10px 25px 1px 50px;
+    width: 465px;
 }
 #jump_to, #jump_page {
   background: white;
@@ -70,6 +85,9 @@ h1, h2, h3, h4, h5, h6 {
         }
         #jump_page .source:first-child {
         }
+th {
+    font-weight: normal;
+}
 table td {
   border: 0;
   outline: 0;
@@ -189,6 +207,83 @@ body .vi { color: #19469D }                     /* Name.Variable.Instance */
 body .il { color: #666666 }                     /* Literal.Number.Integer.Long */
 `
 
+var ABOUT_HTML = `
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>About lazylit</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <link rel="stylesheet" media="all" href="gocco.css" />
+</head>
+
+<body>
+  <div id="container">
+    <div id="background"></div>
+    <div id="content">
+        <h1> What is lazylit? </h1>
+        <p>
+            Lazylit is a collection of heavily documented source code files. Each page of documentation hosted here is written for a specific revision/commit of a source code file that lives somewhere else (i.e. a repository in GitHub).
+        </p>
+        <p>
+            Follow the links<sup>*</sup> below to view available documentation:
+        </p>
+        <ul>
+            {{ range . }}
+            <li>
+                <a href="{{ . }}/index.html">
+                {{ . }}
+                </a>
+            </li>
+            {{ end }}
+        </ul>
+        <p class="footnote">
+            <sup>*</sup> They link to "redirection pages" which provides a consistent identifier and landing page even if the source code file changes names over time.
+        </p>
+        <hr>
+        <h2>Motivation</h2>
+        <p>
+            I wanted a simple way to share extensive code comments without the ongoing maintenance burden and inevitable code/comment drift that is characteristic of traditional code commenting practice. 
+        </p>
+        <p>
+            I've often heard advice that usually sounds like "don't use advanced features of a language/tool, because it makes code harder to understand".
+            With a tool like GNU <code>make</code>, a lot of these "advanced" features can replace dozens of lines of bespoke shell scripts.
+            Following this advice then turns an opportunity to learn a common tool <i>well</i> into a grueling slog through a coworker's (or your own) buggy mess.
+            Instead of avoiding certain features and tools, I believe that a well-written set of notes (with links to relevant documentation) can go a long way in improving code understandability.
+            There are thousands of programming tools and languages; most people only know a few.
+            For <code>make</code> in particular, my (limited) experience has shown me that programmers without experience in C are likely to be unfamiliar with <code>make</code> in general.
+            Expecting that all code should be immediately understandable to anyone at first glance is unrealistic.
+            But we can certainly leave clues behind us that point readers <i>toward</i> understanding.
+        </p>
+        <p>
+            But fancy tool/language features are not the only thing worth documenting in this way.
+            <i>Project</i>- and <i>team</i>-specific conventions and patterns are worth documenting as well.
+            For example, if all your team's projects have a Makefile with a similar structure, an explanation of that structure and pattern could accelerate a new developer's ability to read and understand the team's projects.
+        </p>
+        <p>
+            Approaching existing code bases is one of the hardest things I've had to do as a programmer. This project as an attempt to address that challenge. I hope it will make the lives of my coworkers easier by making it easier for new developers to learn about the conventions and tricks used in codebases I work on.
+        </p>
+        <h2> Why not store the explanation in the repo, next to the source itself? </h2>
+        <p>
+            Storing an explanation next to the code (either in comments, as separate files, or using a proper <a href="https://en.wikipedia.org/wiki/Literate_programming">literate programming</a> tool) comes with the expectation that it is always kept up-to-date with the source.
+            This incurs a maintenance burden, which I felt would be too cumbersome and in fact, unnecessary.
+            The focus should be on explaining the <i>patterns</i> and the <i>features</i> or <i>paradigms</i> being used; the things that will help a developer read the code itself.
+            Thus, an explanation written against a version of the code slightly out of date should still be useful, because they can apply what they learn to the newer code.
+        </p>
+        <h2>Acknowledgements</h2>
+        <p>
+            I borrowed heavily from the <a href="http://ashkenas.com/docco/">Docco</a> project and its derivatives. I am especially grateful for Nikhil Marathe's golang port of Docco, <a href="https://github.com/nikhilm/gocco">gocco</a>, from which I borrowed (i.e. copied) a large portion of this code.
+        </p>
+        <hr>
+        <footer>
+            <p>Lazylit was created by Daniel Sabsay and is under the MIT License.</p>
+        </footer>
+    </div>
+  </div>
+</body>
+</html>
+`
+
 var INDEX_HTML = `
 <!DOCTYPE html>
 
@@ -202,16 +297,19 @@ var INDEX_HTML = `
 <body>
   <div id="container">
     <div id="background"></div>
-    <h1> {{ .ArtifactName }} </h1>
-    <ul>
-        {{ range .Snapshots }}
-        <li>
-            <a href="./{{ .Dest }}">
-            {{ .CommitDate }} ({{ .SourceFileName }})
-            </a>
-        </li>
-        {{ end }}
-    </ul>
+    <div id="content">
+        <h1> {{ .ArtifactName }} </h1>
+        <p> Notes are available for these revisions (commits): </p>
+        <ul>
+            {{ range .Snapshots }}
+            <li>
+                <a href="{{ .Destination | base }}">
+                {{ .CommitDateString }} ({{ .SourceFileName }})
+                </a>
+            </li>
+            {{ end }}
+        </ul>
+    </div>
   </div>
 </body>
 </html>
@@ -224,19 +322,19 @@ var HTML = `
 <head>
     <title>{{ .Title }}</title>
   <meta http-equiv="content-type" content="text/html; charset=UTF-8">
-  <link rel="stylesheet" media="all" href="gocco.css" />
+  <link rel="stylesheet" media="all" href="../gocco.css" />
 </head>
 <body>
   <div id="container">
     <div id="background"></div>
     {{ if .Multiple }}
       <div id="jump_to">
-        Jump To &hellip;
+        Other revisions &hellip;
         <div id="jump_wrapper">
           <div id="jump_page">
-              {{ range .Sources }}
-              <a class="source" href="{{ destination . | base }}">
-                  {{ base . }}
+              {{ range .OtherRevisions }}
+              <a class="source" href="{{ .Destination | base }}">
+                  {{ .CommitDateString }}
               </a>
               {{ end }}
           </div>
@@ -250,6 +348,9 @@ var HTML = `
             <h1>
                 {{ .Title }}
             </h1>
+            <p> <i>
+                Viewing notes written by {{ .Snapshot.DocAuthor }} for {{ .Snapshot.SourceFileName }} at revision <a href="{{ .Snapshot.SourceLink }}">{{ .Snapshot.Commit }} ({{ .Snapshot.CommitDateString }})</a>. Select other revisions via the menu to the right.
+            </i> </p>
           </th>
           <th class="code">
           </th>
