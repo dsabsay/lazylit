@@ -101,7 +101,7 @@ type TemplateData struct {
 var languages map[string]*Language
 
 // ## Constants
-const VERSION = "0.1.1"
+const VERSION = "0.2.1"
 const DESCRIPTION = `usage: lazylit [-version]
 
     Generate source code documentation as static web pages.

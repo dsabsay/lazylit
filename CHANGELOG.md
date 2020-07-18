@@ -2,6 +2,9 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.2.1
+* Fix version number given by `-version`
+
 ## 0.2.0
 * Add `-version` and `-help` flags.
 
