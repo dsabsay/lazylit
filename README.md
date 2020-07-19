@@ -1,5 +1,8 @@
 # lazylit
 
+_Publish an ad hoc explanation of code, tied to a single revision/commit, and link
+to that explanation from anywhere._
+
 lazylit is a code documentation tool that generates static HTML that can be
 published via e.g. GitHub Pages and linked from anywhere (code comments,
 READMEs, Jira tickets, etc.).
