@@ -16,3 +16,4 @@ test: lazylit
 clean:
 	rm -f lazylit
 	rm -rf tmp
+	rm -rf docs

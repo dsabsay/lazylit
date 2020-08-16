@@ -1,3 +1,3 @@
 *.swp
-docs/
-lazylit
+/docs/
+/lazylit
