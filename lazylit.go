@@ -208,7 +208,6 @@ func highlight(source string, sections *list.List) {
 
 	for e := sections.Front(); e != nil; e = e.Next() {
 		index := language.dividerHTML.FindIndex(output)
-		fmt.Printf("index: %v\n", index)
 		if index == nil {
 			index = []int{len(output), len(output)}
 		}
@@ -294,7 +293,6 @@ func setup() {
 		lang.commentMatcher, _ = regexp.Compile("^\\s*" + lang.symbol + "\\s?")
 		lang.dividerText = "\n" + lang.symbol + "DIVIDER\n"
 		lang.dividerHTML, _ = regexp.Compile(`\n*<span class="c1?">` + lang.symbol + `DIVIDER\n*<\/span>\n*`)
-		log.Println(lang.dividerHTML)
 	}
 }
 
